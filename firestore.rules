@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: users
+    // Fields: uid, name, email, role (admin|agent), createdAt
+    //
+    // Collection: members
+    // Fields: id, name, phone, address, aadhar, issueDate, expiryDate, agentId, agentName, status, createdAt
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "amansyed998799@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isAgent() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'agent';
+    }
+
+    // User Validation
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role']) &&
+             data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string &&
+             data.role in ['admin', 'agent'];
+    }
+
+    // Member Validation
+    function isValidMember(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'issueDate', 'expiryDate', 'agentId', 'status']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.phone is string && data.phone.size() >= 10 &&
+             data.status in ['active', 'expired'];
+    }
+
+    // Hospital Validation
+    function isValidHospital(data) {
+      return data.keys().hasAll(['id', 'name', 'image', 'address', 'phone', 'isVerified']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.address is string && data.address.size() > 0 &&
+             data.phone is string && data.phone.size() >= 10 &&
+             data.isVerified is bool;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == 'agent' || isAdmin());
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role);
+    }
+
+    match /members/{memberId} {
+      // Public read for verification portal
+      allow read: if true; 
+      
+      allow create: if isAuthenticated() && (isAdmin() || isAgent()) && isValidMember(request.resource.data);
+      allow update: if isAdmin() || (isAuthenticated() && isAgent() && resource.data.agentId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /hospitals/{hospitalId} {
+      // Public read for directory and verification portal
+      allow read: if true;
+      
+      allow create: if isAdmin() && isValidHospital(request.resource.data);
+      allow update: if isAdmin() && isValidHospital(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}

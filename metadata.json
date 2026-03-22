@@ -1,0 +1,7 @@
+{
+  "name": "Care Consultancy",
+  "description": "A professional healthcare membership management system for selling and managing health membership cards with QR verification.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
